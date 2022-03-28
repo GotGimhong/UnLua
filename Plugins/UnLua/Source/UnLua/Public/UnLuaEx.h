@@ -110,7 +110,7 @@ namespace UnLua
         virtual void Register(lua_State *L) override
         {
             // make sure the meta table is on the top of the stack
-            lua_pushstring(L, TCHAR_TO_ANSI(*Name));
+            lua_pushstring(L, TCHAR_TO_UTF8(*Name));
             lua_pushcfunction(L, Func);
             lua_rawset(L, -3);
         }
@@ -168,10 +168,7 @@ namespace UnLua
     private:
         FString Name;
         TFunction<RetType(ClassType*, ArgType...)> Func;
-
-#if WITH_EDITOR
         FString ClassName;
-#endif
     };
 
     /**
@@ -191,9 +188,7 @@ namespace UnLua
 #endif
 
     private:
-#if WITH_EDITOR
         FString ClassName;
-#endif
     };
 
 
@@ -205,7 +200,7 @@ namespace UnLua
         virtual void Register(lua_State *L) override
         {
             // make sure the meta table is on the top of the stack
-            lua_pushstring(L, TCHAR_TO_ANSI(*Name));
+            lua_pushstring(L, TCHAR_TO_UTF8(*Name));
             lua_pushlightuserdata(L, this);
             lua_rawset(L, -3);
         }
@@ -269,6 +264,31 @@ namespace UnLua
     };
 
     template <typename T>
+    struct TExportedStaticProperty : public FExportedProperty
+    {
+    public:
+        TExportedStaticProperty(const FString &InName, T* Value);
+
+        virtual void Register(lua_State *L) override
+        {
+            // make sure the meta table is on the top of the stack
+            lua_pushstring(L, TCHAR_TO_UTF8(*Name));
+            UnLua::Push<T>(L, Value);
+            lua_rawset(L, -3);
+        }
+
+        virtual void Read(lua_State *L, const void *ContainerPtr, bool bCreateCopy) const override;
+        virtual void Write(lua_State *L, void *ContainerPtr, int32 IndexInStack) const override;
+        
+#if WITH_EDITOR
+        virtual void GenerateIntelliSense(FString &Buffer) const override;
+#endif
+
+    private:
+        T* Value;
+    };
+    
+    template <typename T>
     struct TExportedArrayProperty : public FExportedProperty
     {
         TExportedArrayProperty(const FString &InName, uint32 InOffset, int32 InArrayDim);
@@ -329,6 +349,7 @@ namespace UnLua
 
         template <typename T> void AddProperty(const FString &InName, T ClassType::*Property);
         template <typename T, int32 N> void AddProperty(const FString &InName, T (ClassType::*Property)[N]);
+        template <typename T> void AddStaticProperty(const FString &InName, T *Property);
 
         template <typename RetType, typename... ArgType> void AddFunction(const FString &InName, RetType(ClassType::*InFunc)(ArgType...));
         template <typename RetType, typename... ArgType> void AddFunction(const FString &InName, RetType(ClassType::*InFunc)(ArgType...) const);
@@ -446,6 +467,9 @@ namespace UnLua
 #define ADD_PROPERTY(Property) \
             Class->AddProperty(#Property, &ClassType::Property);
 
+#define ADD_STATIC_PROPERTY(Property) \
+            Class->AddStaticProperty(#Property, &ClassType::Property);
+
 #define ADD_BITFIELD_BOOL_PROPERTY(Property) \
             { \
                 uint8 Buffer[sizeof(ClassType)] = {0}; \
@@ -535,6 +559,16 @@ namespace UnLua
     { \
         typedef Enum EnumType; \
         FExported##Enum(const FString &InName) \
+            : UnLua::FExportedEnum(InName) \
+        { \
+            UnLua::ExportEnum(this);
+
+#define BEGIN_EXPORT_ENUM_EX(Enum, Name) \
+    DEFINE_NAMED_TYPE(#Name, Enum) \
+    static struct FExported##Name : public UnLua::FExportedEnum \
+    { \
+        typedef Enum EnumType; \
+        FExported##Name(const FString &InName) \
             : UnLua::FExportedEnum(InName) \
         { \
             UnLua::ExportEnum(this);

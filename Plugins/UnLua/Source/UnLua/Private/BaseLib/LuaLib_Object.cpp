@@ -61,7 +61,7 @@ int32 UObject_Load(lua_State *L)
         if (Enum)
         {
             RegisterEnum(L, Enum);
-            int32 Type = luaL_getmetatable(L, TCHAR_TO_ANSI(*Enum->GetName()));
+            int32 Type = luaL_getmetatable(L, TCHAR_TO_UTF8(*Enum->GetName()));
             check(Type == LUA_TTABLE);
         }
         else
@@ -83,21 +83,15 @@ int32 UObject_Load(lua_State *L)
  */
 static int32 UObject_IsValid(lua_State *L)
 {
-    int32 NumParams = lua_gettop(L);
+    const int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
     {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
+        UE_LOG(LogUnLua, Error, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
         return 0;
     }
-
-    UObject *Object = UnLua::GetUObject(L, 1);
-    if (!Object)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
-
-    bool bValid = ::IsValid(Object);
+    
+    UObject* Object = UnLua::GetUObject(L, 1);
+    const bool bValid = GLuaCxt->IsUObjectValid(Object) && IsValid(Object);
     lua_pushboolean(L, bValid);
     return 1;
 }
@@ -122,7 +116,7 @@ static int32 UObject_GetName(lua_State *L)
     }
 
     FString Name = Object->GetName();
-    lua_pushstring(L, TCHAR_TO_ANSI(*Name));
+    lua_pushstring(L, TCHAR_TO_UTF8(*Name));
     return 1;
 }
 
@@ -212,13 +206,20 @@ static int32 UObject_IsA(lua_State *L)
     }
 
     UObject *Object = UnLua::GetUObject(L, 1);
-    if (!Object)
+    if (!GLuaCxt->IsUObjectValid(Object))
     {
         UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
         return 0;
     }
 
-    UClass *Class = Cast<UClass>(UnLua::GetUObject(L, 2));
+    UObject* ClassObject = UnLua::GetUObject(L, 2);
+    if (!GLuaCxt->IsUObjectValid(ClassObject))
+    {
+        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
+        return 0;
+    }
+
+    UClass *Class = Cast<UClass>(ClassObject);
     if (!Class)
     {
         UE_LOG(LogUnLua, Log, TEXT("%s: Invalid class!"), ANSI_TO_TCHAR(__FUNCTION__));
@@ -230,7 +231,7 @@ static int32 UObject_IsA(lua_State *L)
     return 1;
 }
 
-static int32 UObject_Destroy(lua_State *L)
+static int32 UObject_Release(lua_State *L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
@@ -239,25 +240,13 @@ static int32 UObject_Destroy(lua_State *L)
         return 0;
     }
 
-    UObject *Object = UnLua::GetUObject(L, -1);
-    if (Object)
+    if (LUA_TTABLE == lua_type(L, -1))
     {
-        if (Object->IsA<UClass>())
-        {
-            UClass *Class = (UClass*)Object;
-            ClearLibrary(L, TCHAR_TO_ANSI(*FString::Printf(TEXT("%s%s"), Class->GetPrefixCPP(), *Class->GetName())));
-            GLuaCxt->GetManager()->CleanUpByClass(Class);
-            GObjectReferencer.RemoveObjectRef(Class);
-        }
-        else
-        {
-            int32 Type = lua_type(L, -1);
-            if (Type == LUA_TTABLE)
-            {
-                GLuaCxt->NotifyUObjectDeleted(Object, INDEX_NONE);
-            }
-        }
+        UObject* Object = UnLua::GetUObject(L, -1);
+        if (Object)
+            GLuaCxt->GetManager()->ReleaseAttachedObjectLuaRef(Object);
     }
+
     return 0;
 }
 
@@ -279,11 +268,12 @@ int32 UObject_Identical(lua_State *L)
     return 1;
 }
 
+
 /**
  * GC function
  */
 int32 UObject_Delete(lua_State *L)
-{
+{   
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
     {
@@ -295,44 +285,57 @@ int32 UObject_Delete(lua_State *L)
     bool bTwoLvlPtr = false;
     bool bClassMetatable = false;
     void *Userdata = GetUserdata(L, 1, &bTwoLvlPtr, &bClassMetatable);
-    if (Userdata)
-    {
-        Object = bTwoLvlPtr ? (UObject*)(*((void**)Userdata)) : (UObject*)Userdata;
-    }
-    else
+    if (!Userdata)
     {
         return 0;
     }
 
     if (bClassMetatable)
     {
-        FClassDesc *Class = (FClassDesc*)Userdata;
-        if (Class->IsValid())
+        FClassDesc* ClassDesc = (FClassDesc*)Userdata;
+
+        lua_pushstring(L, "__name");
+        lua_rawget(L, 1);
+        FString MetaTableName = UTF8_TO_TCHAR(lua_tostring(L, -1));
+        luaL_getmetatable(L, lua_tostring(L, -1));
+        int Type = lua_type(L, -1);
+        if (Type == LUA_TTABLE)
         {
-            int32 Type = luaL_getmetatable(L, Class->GetAnsiName());
-            lua_pop(L, 1);
-            if (Type == LUA_TTABLE)        // meta table is registered again
-            {
-                if (Class->GetRefCount() > 1)
-                {
-                    Class->Release();
-                }
+            // https://github.com/Tencent/UnLua/issues/367
+            FClassDesc* CurrentClassDesc = (FClassDesc*)GetUserdata(L, -1);
+            lua_pop(L, 2);
+            if (CurrentClassDesc == ClassDesc)
                 return 0;
-            }
-            else
-            {
-                if (Class->GetRefCount() == 1)
-                {
-                    FDelegateHelper::CleanUpByClass(Class->AsClass());
-                }
-            }
+        }
+        else
+        {
+            lua_pop(L, 2);
         }
 
-        GReflectionRegistry.UnRegisterClass(Class);
+        if (GReflectionRegistry.IsDescValid(ClassDesc, DESC_CLASS)
+            && ClassDesc->GetName().Equals(MetaTableName))
+        {
+            // remove class ref 
+            if ((ClassDesc->IsValid())
+                &&(!ClassDesc->IsNative()))
+            {
+                GObjectReferencer.RemoveObjectRef(ClassDesc->AsStruct());
+            }
+            
+            // class,ignore ref count
+            GReflectionRegistry.UnRegisterClass(ClassDesc);
+        }
     }
-
-    GObjectReferencer.RemoveObjectRef(Object);
-
+    else
+    {
+        Object = bTwoLvlPtr ? (UObject*)(*((void**)Userdata)) : (UObject*)Userdata;
+        if (Object)
+        {
+            GReflectionRegistry.AddToGCSet(Object);
+            DeleteUObjectRefs(L,Object);
+        }
+    }
+       
     return 0;
 }
 
@@ -348,11 +351,13 @@ static const luaL_Reg UObjectLib[] =
     { "GetClass", UObject_GetClass },
     { "GetWorld", UObject_GetWorld },
     { "IsA", UObject_IsA },
-    { "Destroy", UObject_Destroy },
+    { "Release", UObject_Release },
+    { "Destroy", UObject_Release },
     { "__eq", UObject_Identical },
     { "__gc", UObject_Delete },
     { nullptr, nullptr }
 };
+
 
 /**
  * Export UObject
@@ -386,7 +391,7 @@ static int32 FSoftObjectPtr_ToString(lua_State *L)
         return 1;
     }
 
-    lua_pushstring(L, TCHAR_TO_ANSI(*A->ToString()));
+    lua_pushstring(L, TCHAR_TO_UTF8(*A->ToString()));
     return 1;
 }
 
@@ -398,12 +403,11 @@ static const luaL_Reg FSoftObjectPtrLib[] =
 
 BEGIN_EXPORT_CLASS(FSoftObjectPtr, const UObject*)
     ADD_CONST_FUNCTION_EX("IsValid", bool, IsValid)
-    ADD_CONST_FUNCTION_EX("IsNull", bool, IsNull)
-    ADD_CONST_FUNCTION_EX("IsPending", bool, IsPending)
     ADD_FUNCTION_EX("Reset", void, Reset)
     ADD_FUNCTION_EX("Set", void, operator=, const UObject*)
+    ADD_FUNCTION_EX("GetAssetName", FString, GetAssetName)
+    ADD_FUNCTION_EX("GetLongPackageName", FString, GetLongPackageName)
     ADD_CONST_FUNCTION_EX("Get", UObject*, Get)
-    ADD_CONST_FUNCTION_EX("LoadSynchronous", UObject*, LoadSynchronous)
     ADD_LIB(FSoftObjectPtrLib)
 END_EXPORT_CLASS()
 IMPLEMENT_EXPORTED_CLASS(FSoftObjectPtr)

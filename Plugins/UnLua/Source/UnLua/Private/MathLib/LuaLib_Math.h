@@ -15,6 +15,24 @@
 #pragma once
 
 #include "LuaCore.h"
+#include "UnLuaCompatibility.h"
+
+static uint64 GetTypeHash(lua_State *L, int32 Index)
+{
+    if (lua_getmetatable(L, Index) == 0)
+    {
+        return 0;
+    }
+    uint64 Hash = 0;
+    lua_pushstring(L, "TypeHash");
+    lua_rawget(L, -2);
+    if (lua_type(L, -1) == LUA_TNUMBER)
+    {
+        Hash = lua_tonumber(L, -1);
+    }
+    lua_pop(L, 2);
+    return Hash;
+}
 
 namespace UnLua
 {
@@ -212,8 +230,8 @@ namespace UnLua
     template <typename T>
     struct TMathTypeTraits
     {
-        typedef float FieldType;
-        typedef float ScalarType;
+        typedef unluaReal FieldType;
+        typedef unluaReal ScalarType;
         enum { NUM_FIELDS = 3 };
     };
 
@@ -240,29 +258,29 @@ namespace UnLua
 
     template<> struct TMathTypeTraits<FVector2D>
     {
-        typedef float FieldType;
-        typedef float ScalarType;
+        typedef unluaReal FieldType;
+        typedef unluaReal ScalarType;
         enum { NUM_FIELDS = 2 };
     };
 
     template<> struct TMathTypeTraits<FVector4>
     {
-        typedef float FieldType;
-        typedef float ScalarType;
+        typedef unluaReal FieldType;
+        typedef unluaReal ScalarType;
         enum { NUM_FIELDS = 4 };
     };
 
     template<> struct TMathTypeTraits<FQuat>
     {
         typedef FQuat FieldType;
-        typedef float ScalarType;
+        typedef unluaReal ScalarType;
         enum { NUM_FIELDS = 1 };
     };
 
     template<> struct TMathTypeTraits<FTransform>
     {
         typedef FTransform FieldType;
-        typedef float ScalarType;
+        typedef unluaReal ScalarType;
         enum { NUM_FIELDS = 1 };
     };
 
@@ -329,6 +347,13 @@ namespace UnLua
             {
             case LUA_TUSERDATA:
                 {
+                    uint64 Type1 = GetTypeHash(L, 1);
+                    uint64 Type2 = GetTypeHash(L, 2);
+                    if (!Type1 || !Type2 || Type1 != Type2)
+                    {
+                        UE_LOG(LogUnLua, Error, TEXT("Invalid parameters, incompatible types!"));
+                        return 0;
+                    }
                     T *B = (T*)GetCppInstanceFast(L, 2);
                     TMathCalculationHelper<FT, ST, OperatorType, ScalarOperatorType, TMathTypeTraits<T>::NUM_FIELDS>::Calculate(reinterpret_cast<FT*>(Result), reinterpret_cast<FT*>(A), reinterpret_cast<FT*>(B), OperatorType());
                 }
@@ -345,7 +370,6 @@ namespace UnLua
     };
 
     template <typename T> FString ToStringWrapper(T *A) { return A->ToString(); }
-    FORCEINLINE FString ToStringWrapper(FTransform *A) { return A->ToHumanReadableString(); }
 
     template <typename T>
     struct TMathUtils
@@ -371,7 +395,7 @@ namespace UnLua
                 return 1;
             }
 
-            lua_pushstring(L, TCHAR_TO_ANSI(*(ToStringWrapper(A))));
+            lua_pushstring(L, TCHAR_TO_UTF8(*(ToStringWrapper(A))));
             return 1;
         }
     };

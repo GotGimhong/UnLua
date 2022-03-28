@@ -36,46 +36,41 @@ public:
     bool ExportClass(UnLua::IExportedClass *Class);
     UnLua::IExportedClass* FindExportedClass(FName Name);
     UnLua::IExportedClass* FindExportedReflectedClass(FName Name);
+    UnLua::IExportedClass* FindExportedNonReflectedClass(FName Name);
 
     bool AddTypeInterface(FName Name, TSharedPtr<UnLua::ITypeInterface> TypeInterface);
     TSharedPtr<UnLua::ITypeInterface> FindTypeInterface(FName Name);
 
-    bool TryToBindLua(UObjectBaseUtility *Object);
+    bool TryToBindLua(UObject *Object);
 
     void AddLibraryName(const TCHAR *LibraryName) { LibraryNames.Add(LibraryName); }
     void AddModuleName(const TCHAR *ModuleName) { ModuleNames.AddUnique(ModuleName); }
+    void AddSearcher(int (*Searcher)(lua_State *), int Index);
+    void AddBuiltinLoader(const TCHAR *Name, int (*Loader)(lua_State *)) { BuiltinLoaders.Add(Name, Loader); }
 
-#if ENGINE_MINOR_VERSION > 23
+#if ENGINE_MAJOR_VERSION > 4 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 23)
     void OnWorldTickStart(UWorld *World, ELevelTick TickType, float DeltaTime);
 #else
     void OnWorldTickStart(ELevelTick TickType, float DeltaTime);
 #endif
     void OnWorldCleanup(UWorld *World, bool bSessionEnded, bool bCleanupResources);
-    void OnPostWorldCleanup(UWorld *World, bool bSessionEnded, bool bCleanupResources);
-    void OnPreWorldInitialization(UWorld *World, const UWorld::InitializationValues);
-    void OnPostWorldInitialization(UWorld *World, const UWorld::InitializationValues);
     void OnPostEngineInit();
     void OnPreExit();
-    void OnAsyncLoadingFlushUpdate();
     void OnCrash();
-    void PreLoadMap(const FString &MapName);
     void PostLoadMapWithWorld(UWorld *World);
     void OnPostGarbageCollect();
 
 #if WITH_EDITOR
     void PreBeginPIE(bool bIsSimulating);
-    void BeginPIE(bool bIsSimulating);
     void PostPIEStarted(bool bIsSimulating);
     void PrePIEEnded(bool bIsSimulating);
-    void EndPIE(bool bIsSimulating);
-
-    void OnEndPlayMap();
+#endif
 
     const TMap<FName, UnLua::IExportedClass*>& GetExportedReflectedClasses() const { return ExportedReflectedClasses; }
     const TMap<FName, UnLua::IExportedClass*>& GetExportedNonReflectedClasses() const { return ExportedNonReflectedClasses; }
     const TArray<UnLua::IExportedEnum*>& GetExportedEnums() const { return ExportedEnums; }
     const TArray<UnLua::IExportedFunction*>& GetExportedFunctions() const { return ExportedFunctions; }
-#endif
+    const TMap<const TCHAR *, int (*)(lua_State *)>& GetBuiltinLoaders() const { return BuiltinLoaders; } 
 
     void AddThread(lua_State *Thread, int32 ThreadRef);
     void ResumeThread(int32 ThreadRef);
@@ -89,9 +84,13 @@ public:
     // interfaces of FUObjectArray::FUObjectCreateListener and FUObjectArray::FUObjectDeleteListener
     virtual void NotifyUObjectCreated(const class UObjectBase *InObject, int32 Index) override;
     virtual void NotifyUObjectDeleted(const class UObjectBase *InObject, int32 Index) override;
-#if ENGINE_MINOR_VERSION > 22
-    virtual void OnUObjectArrayShutdown() override {}
+#if ENGINE_MAJOR_VERSION > 4 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 22)
+	virtual void OnUObjectArrayShutdown() override;
 #endif
+
+	bool IsUObjectValid(UObjectBase* UObjPtr);
+
+    UUnLuaManager* GetUnLuaManager();
 
 private:
     FLuaContext();
@@ -103,6 +102,7 @@ private:
     void Initialize();
     void Cleanup(bool bFullCleanup = false, UWorld *World = nullptr);
 
+    void OnAsyncLoadingFlushUpdate();
     bool OnGameViewportInputKey(FKey InKey, FModifierKeysState ModifierKeyState, EInputEvent EventType);
 
     lua_State *L;
@@ -113,13 +113,10 @@ private:
     FDelegateHandle OnWorldTickStartHandle;
     FDelegateHandle OnPostGarbageCollectHandle;
 
-    FString NextMap;
-
     TArray<FString> LibraryNames;       // metatables for classes/enums
     TArray<FString> ModuleNames;        // required Lua modules
 
-    TArray<UObject*> Candidates;        // binding candidates during async loading
-    FCriticalSection CandidatesCS;      // critical section for accessing 'Candidates'
+    TArray<FWeakObjectPtr> Candidates;        // binding candidates during async loading
 
     TArray<UnLua::IExportedFunction*> ExportedFunctions;                // statically exported global functions
     TArray<UnLua::IExportedEnum*> ExportedEnums;                        // statically exported enums
@@ -128,24 +125,24 @@ private:
 
     TMap<FName, TSharedPtr<UnLua::ITypeInterface>> TypeInterfaces;      // registered type interfaces
 
+    TMap<const TCHAR *, int (*)(lua_State *)> BuiltinLoaders;
+
+    //!!!Fix!!!
+    //thread need refine
     TMap<lua_State*, int32> ThreadToRef;                                // coroutine -> ref
     TMap<int32, lua_State*> RefToThread;                                // ref -> coroutine
+	TMap<UObjectBase *, int32> UObjPtr2Idx;                             // UObject pointer -> index in GUObjectArray
+    TMap<UObjectBase*, FString> UObjPtr2Name;                           // UObject pointer -> Name for debug purpose
+    FCriticalSection Async2MainCS;                                      // async loading thread and main thread sync lock
 
 #if WITH_EDITOR
-    UWorld *ServerWorld;
-    TArray<UWorld*> LoadedWorlds;
-
     void *LuaHandle;
 #endif
 
     TArray<class UInputComponent*> CandidateInputComponents;
+    TArray<UGameInstance*> GameInstances;
 
     bool bEnable;
-    bool bInitialized;
-    bool bIsPIE;
-    bool bAddUObjectNotify;
-    bool bDelegatesRegistered;
-    bool bIsInSeamlessTravel;
 };
 
 extern class FLuaContext *GLuaCxt;
