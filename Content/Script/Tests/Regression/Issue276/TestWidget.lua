@@ -1,13 +1,10 @@
-require "UnLua"
-
-local M = Class()
+local M = UnLua.Class()
 
 local function run(self)
     local action = NewObject(UE.UUnLuaLatentAction, self)
     action:SetTickableWhenPaused(true)
-    local info = action:CreateInfoForLegacy()
+    local info = action:CreateInfo()
     UE.UKismetSystemLibrary.Delay(self, 0.5, info)
-
     _G.Flag = true
 end
 

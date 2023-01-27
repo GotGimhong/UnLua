@@ -343,7 +343,10 @@ public:
                     else if (Property->IsA(FBoolProperty::StaticClass())) // boolean
                     {
                         PreAddProperty(Class, Function);
-                        GeneratedFileContent += FString::Printf(TEXT("PC->Parameters.Add(TEXT(\"%s\"), SharedBool_%s);\r\n"), *Property->GetName(), *ValueStr.ToUpper());
+						if(ValueStr.IsEmpty())
+							GeneratedFileContent += FString::Printf(TEXT("PC->Parameters.Add(TEXT(\"%s\"), SharedBool_FALSE);\r\n"), *Property->GetName());
+						else
+							GeneratedFileContent += FString::Printf(TEXT("PC->Parameters.Add(TEXT(\"%s\"), SharedBool_%s);\r\n"), *Property->GetName(), *ValueStr.ToUpper());
                     }
                     else if (Property->IsA(FNameProperty::StaticClass())) // FName
                     {
@@ -412,7 +415,7 @@ public:
         {
             if (GeneratedFileContent != FileContent)
             {
-                bool bResult = FFileHelper::SaveStringToFile(GeneratedFileContent, *FilePath);
+                bool bResult = FFileHelper::SaveStringToFile(GeneratedFileContent, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
                 check(bResult);
             }
         }
@@ -422,7 +425,7 @@ public:
             // or do not update DefaultParamCollection.inl file if exists
             if (!FPaths::FileExists(FilePath) || FileContent.Len() == 0)
             {
-                bool bResult = FFileHelper::SaveStringToFile(GeneratedFileContent, *FilePath);
+                bool bResult = FFileHelper::SaveStringToFile(GeneratedFileContent, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
                 check(bResult);
             }
         }

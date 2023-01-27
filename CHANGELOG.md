@@ -4,7 +4,242 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [2.1.4] - 2021-4-8
+## [2.3.2] - 2022-12-9
+
+### Added
+- 增加配置选项[崩溃时输出Lua堆栈到日志](./Docs/CN/Settings.md#崩溃时输出lua堆栈到日志)
+- 针对自`2.2.0`版本以来调整的垃圾回收机制的[说明文档](./Docs/CN/UnLua_Programming_Guide.md#五垃圾回收)
+
+### Fixed
+- UObject绑定后的元表和其他表相等判断时结果错误 [#281](https://github.com/Tencent/UnLua/issues/281) [#567](https://github.com/Tencent/UnLua/issues/567)
+- 访问UStruct内部的委托会check [#561](https://github.com/Tencent/UnLua/issues/561)
+- 多次传递委托类型的参数到同一函数时，可能因为Owner失效而无法回调 [#566](https://github.com/Tencent/UnLua/issues/566)
+- UE5.1之后构造`FProperty`报deprecated [#569](https://github.com/Tencent/UnLua/issues/569)
+- pairs在参数异常时返回空迭代器，避免lua调试时访问报错
+- 热重载upvalue没有生效
+- `UObject.Load`传入中文路径时乱码
+
+### Changed
+- 在[热重载模式](./Docs/CN/Settings.md#热重载模式)为禁用时，不再加载`HotReload.lua`，不会替换全局的`require`
+- 在使用`LoadObject`加载不到对象时不再输出加载失败的日志，而是直接返回`nil`
+
+## [2.3.1] - 2022-11-11
+
+### Added
+- 支持UE5.1
+- 支持PS5
+- 增加 `UnLua::PrintCallStack(L)` 的接口来方便在IDE里断点直接执行输出lua堆栈
+- 更多容器和结构体相关的访问保护，增加[悬垂指针检查](./Docs/CN/Settings.md#启用类型检查)选项
+- `UnLuaExtensions` 新增可选集成 [lua-protobuf](https://github.com/starwing/lua-protobuf) 和 [lua-rapidjson](https://github.com/xpol/lua-rapidjson)
+- 增加 `FLuaEnv` 的 `OnDestroyed` 事件
+
+### Fixed
+- Lua报错输出脚本路径如果太长会被截断
+- xxx:IsA(UE.UClass) 会报错
+- Lua覆写Out返回值时无法返回nil [#539](https://github.com/Tencent/UnLua/issues/539)
+- 安装 `Apple ProRes Media` 插件后会导致UnLua启动崩溃 [#534](https://github.com/Tencent/UnLua/issues/534)
+- Actor的Struct成员变量在Lua里引用，释放后仍旧可以访问 [#517](https://github.com/Tencent/UnLua/issues/517)
+- 在 `print` 时参数过多可能会导致Lua栈溢出的问题 [#543](https://github.com/Tencent/UnLua/pull/543)
+- LuaGC使用了未初始化的参数 [#548](https://github.com/Tencent/UnLua/pull/548)
+- NullPointer error in function 'CheckPropertyType' [#549](https://github.com/Tencent/UnLua/pull/549)
+- 找不到 `UnLua.Input` 模块时不会再check了
+- 访问非TArray的结构体数组报错 [#554](https://github.com/Tencent/UnLua/issues/554)
+- 服务端 `Possess` 后，新角色上的 `InputComponent` 输入绑定无效 [#553](https://github.com/Tencent/UnLua/issues/553)
+- mac打包找不到libLua.dylib问题 [#557](https://github.com/Tencent/UnLua/pull/557)
+
+### Changed
+- 在[启用类型检查](./Docs/CN/Settings.md#启用类型检查)时，需要依次返回返回值和Out参数，而不能像旧版本一样忽略不返回
+
+## [2.3.0] - 2022-10-8
+
+### Added
+- 支持使用 `UnLua.PackagePath` 的方式来搜索Lua文件，也支持从插件Content目录加载
+- 支持Android下的x86_64
+- 支持自定义预绑定类型，参考[预绑定类型列表](./Docs/CN/Settings.md#预绑定类型列表)配置选项
+- 支持UE5下的蓝图UMG输入绑定，使用新增的 `UnLua.Input` 模块，可以做到更细节的输入绑定
+- `UnLua.Ref` 和 `UnLua.Unref` 接口，提供将 `UObject` 生命周期和Lua侧同步的管理机制
+- 提升Lua访问UE函数和属性的性能
+- [自定义生成Lua模版](./Docs/CN/CustomTemplate.md)
+
+### Fixed
+- Mac下编辑器的dylib无法加载
+- PushMetatable时会使用旧的metatable [#515](https://github.com/Tencent/UnLua/pull/515)
+- Delegate的闭包函数的upvalue无法被gc [#516](https://github.com/Tencent/UnLua/issues/516)
+- 在Lua中访问TArray不存在的字段会报stackoverflow
+- 自动保存的打包设置没有生效
+- UE5下打包后UnLua配置没有正确加载
+
+### Changed
+- 默认关闭运行时对`UTF-8 BOM`文件头的加载支持，需要兼容请开启[兼容UTF-8 BOM文件头](./Docs/CN/Settings.md#兼容UTF-8%20BOM文件头)选项
+
+### Removed
+- 移除 `AddPackagePath` 接口
+
+## [2.2.4] - 2022-9-1
+
+### Added
+- 增加最佳实践工程示例 [Lyra with UnLua](https://github.com/xuyanghuang-tencent/LyraWithUnLua)
+- 支持配置按C/C++编译Lua环境
+- 支持Lua启动入口脚本配置
+- 支持Lua环境手动启动参数
+- 默认自动将 `Content/Script` 目录加入打包设置
+- 增加一些指针对象的合法性检查
+- `UnLua.HotReload` 支持手动指定热重载模块列表
+- 支持Commandlet导出蓝图智能提示信息 [#507](https://github.com/Tencent/UnLua/pull/507)
+
+### Fixed
+- UE5下的Script编译警告
+- 智能提示文件重复生成 [#498](https://github.com/Tencent/UnLua/issues/498)
+- 智能提示蓝图类型使用 `_C` 后缀 [#493](https://github.com/Tencent/UnLua/pull/493)
+- PIE运行状态下保存对象，可能引起编辑器崩溃 [#489](https://github.com/Tencent/UnLua/pull/489)
+- `bAutoStartup` 配置选项没有生效
+- 当 `UnLuaHotReload.lua` 不存在时会报错
+- 通过C++类绑定的时候使用自动创建脚本功能会崩溃 [#490](https://github.com/Tencent/UnLua/issues/490)
+- 修复一些智能提示被过滤了的情况
+- 监听嵌套界面里的组件的事件会导致组件无法被回收
+- 覆写C++类型的函数后在蓝图编辑器里调用需要刷新节点才能编译过 [#500](https://github.com/Tencent/UnLua/issues/500)
+- Lua持有结构体下的TArray字段，在结构体本身被GC后访问该数组会导致崩溃 [#505](https://github.com/Tencent/UnLua/issues/505)
+- `TCHAR_TO_XXX` 等宏应该只在行内传参使用 [#508](https://github.com/Tencent/UnLua/pull/508)
+- 退出游戏时候可能访问已经被释放的 `UUnLuaManager` 引起的崩溃 [#504](https://github.com/Tencent/UnLua/issues/504)
+- UE5下在编辑器运行游戏的同时编译并保存动画蓝图会Crash [#510](https://github.com/Tencent/UnLua/issues/510)
+
+### Changed
+- Lua模版文件中使用 `@type` 注解 [#498](https://github.com/Tencent/UnLua/issues/498)
+- 使用智能指针保存 `UEnum` 类型指针来区分有效性 [#488](https://github.com/Tencent/UnLua/pull/488)
+- Lua源码作为外部第三方模块引入，默认使用C编译
+- Lua生成模版中统一使用 `UnLua.Class`，并增加类型注解
+- 调整所有LuaLib的异常抛出形式为 `luaL_error` 而不是仅输出错误日志
+- 切换场景时不再强制进行LuaGC
+
+## [2.2.3] - 2022-7-15
+
+### Added
+- 支持蓝图的`BlueprintFunctionLibrary`绑定到Lua与覆写
+- 支持CDO绑定
+- 支持自定义[Lua模块定位](./Docs/CN/Settings.md#Lua模块定位器)设置
+- 生成Lua模版文件时增加`@class`注解
+- UnLua内置API的智能提示
+- 生成智能提示时显示更详细的进度条
+
+### Fixed
+- 打包DS服务端后，预先放在地图里的绑定过Lua的Actor会导致崩溃 [#479](https://github.com/Tencent/UnLua/issues/479)
+- 退出PIE时一些被覆写的Lua函数不会被执行 [#472](https://github.com/Tencent/UnLua/issues/472)
+- 切换场景时访问已释放对象上的属性时会引起崩溃 [#482](https://github.com/Tencent/UnLua/issues/482)
+- 同一个委托对象传递给不同函数来绑定和解绑，会出现无法解绑的问题 [#471](https://github.com/Tencent/UnLua/issues/471)
+- Lua传递给蓝图的FName属性中文会乱码 [#474](https://github.com/Tencent/UnLua/pull/474)
+- 传递给Lua模块的`...`参数没有生效
+- 退出PIE时父类被覆写的UFunction没有还原
+- UE4命名空间的兼容开关没生效
+- Editor下PIE判断不准确 [#468](https://github.com/Tencent/UnLua/pull/468)
+- 真机上UnLuaExtensions模块启动比UnLuaModule晚，导致luasocket没有加载 [#484](https://github.com/Tencent/UnLua/issues/484)
+- 调用静态导出函数的`TCHAR*`类型参数传递为空 [#486](https://github.com/Tencent/UnLua/pull/486)
+
+### Changed
+- 移除`UnLua.lua`，`UnLua`可作为全局对象访问，不需要`require "UnLua"`了
+
+## [2.2.2] - 2022-6-17
+
+### Added
+- 优化绑定检测流程，避免在大量对象创建时导致性能降低 [#457](https://github.com/Tencent/UnLua/pull/457)
+- 通过菜单快速在文件管理器中打开绑定的Lua文件 [#437](https://github.com/Tencent/UnLua/pull/437)
+- 防止Lua代码无限循环超时设置 [#428](https://github.com/Tencent/UnLua/pull/428)
+- 支持添加多播代理绑定相同脚本不同对象实例函数 [#439](https://github.com/Tencent/UnLua/pull/439)
+- 更准确的内存分配统计
+- `lua.gc` 控制台命令
+- UnLua 运行时/编辑器设置的子菜单
+- 编辑器设置支持中文显示
+
+### Fixed
+- 命令行 `-server` 启动时 `UnLuaModule` 没有启动 [#440](https://github.com/Tencent/UnLua/issues/440)
+- `TArray` 和 `TMap` 进行 `pairs` 遍历时使用引用而不是复制 [#442](https://github.com/Tencent/UnLua/pull/442)
+- 实现了FTickableGameObject的对象在Tick里调用自身被Lua覆写的方法会崩溃 [#446](https://github.com/Tencent/UnLua/issues/440)
+- 返回 `TSubclassOf<>` 到C++为空 [#445](https://github.com/Tencent/UnLua/issues/445)
+- UE4.27下无法通过UE.XXX访问游戏项目模块中导出的原生类型 [#448](https://github.com/Tencent/UnLua/issues/448)
+- 从Lua按传递引用到蓝图的TArray引用变成了空Array [#453](https://github.com/Tencent/UnLua/issues/453)
+- PIE过程中如果保存了覆写的蓝图，会导致蓝图资源损坏 [#465](https://github.com/Tencent/UnLua/issues/465)
+- CDO绑定时需要过滤掉 `SKEL` 类型的对象 [#460](https://github.com/Tencent/UnLua/pull/460)
+- 分配在栈上的本地变量会引起 `CacheScriptContainer` 缓存错误导致崩溃 [#455](https://github.com/Tencent/UnLua/issues/455)
+- 热重载时报 `invalid TArray/TMap` 的错误
+- PIE过程中如果保存了覆写的蓝图，会导致蓝图资源损坏 [#465](https://github.com/Tencent/UnLua/issues/465)
+- Linux下带Editor编译报错 [#467](https://github.com/Tencent/UnLua/pull/467)
+
+## [2.2.1] - 2022-5-25
+
+### Added
+- TArray/TMap 支持 `pairs` 遍历
+- TArray 支持使用 `[]` 访问与获取元素，等同于 `Get()` 和 `Set()`
+- TArray/TMap/TSet 的 `Num` 接口，作为 `Length` 的别名
+- 容器支持使用 `UStruct` 作为元素
+- 增加 `UNLUA_LEGACY_RETURN_ORDER` 配置项，以兼容老项目返回值顺序的问题
+- 增加 `UNLUA_LEGACY_BLUEPRINT_PATH` 配置项，以兼容老项目资源路径的问题
+- 按住`Alt`点击绑定可以直接快速按蓝图路径填充Lua模块路径到`GetModuleName`
+
+### Fixed
+- 从Lua侧返回一个数组给蓝图，可能导致卡死
+- UE5下编译报错找不到Tools.DotNETCommon
+- TPSProject在以客户端模式运行时报找不到GameMode的问题
+- 以-server参数启动时会出现断言 [#415](https://github.com/Tencent/UnLua/pull/415)
+- 退出编辑器时候产生崩溃 [#421](https://github.com/Tencent/UnLua/issues/421)
+- UE5主菜单不显示菜单按钮的问题 [#422](https://github.com/Tencent/UnLua/issues/422)
+- UE5下非const引用参数返回顺序异常
+- UE4.25下一些编译报错
+- 导出非UENUM的枚举成员类型异常 [#425](https://github.com/Tencent/UnLua/issues/425)
+- 使用CustomLoader导致打印堆栈时无法显示文件名 [#429](https://github.com/Tencent/UnLua/pull/429)
+- UE5动画通知调用组件Lua覆写函数崩溃 [#430](https://github.com/Tencent/UnLua/issues/430)
+- Lua调用的函数返回蓝图结构体会check [#432](https://github.com/Tencent/UnLua/issues/432)
+- 执行带返回值的委托时，无法从lua返回值
+
+## [2.2.0] - 2022-5-7
+
+### Added
+- 官方交流QQ群：936285107
+- 编辑器主界面工具栏的菜单项入口
+- 内置一些基础的[控制台命令](Docs/CN/ConsoleCommand.md)
+- 配置支持，通过引擎菜单 `项目设置 -> 插件 -> UnLua` 修改运行时和编辑器环境的配置
+- 编辑器界面多语言支持，现在可以看到中文菜单了
+- 多虚拟机环境支持
+- 同名蓝图加载
+- `FSoftObjectPtr` 的静态导出缺少的接口 [#392](https://github.com/Tencent/UnLua/issues/392) [#397](https://github.com/Tencent/UnLua/issues/397)
+- Standalone模式支持 [#396](https://github.com/Tencent/UnLua/issues/396)
+- `GetModuleName` 的路径为空时无法生成模版文件的提示 [#341](https://github.com/Tencent/UnLua/issues/341)
+- 增加Enum的 `GetDisplayNameTextByValue` / `GetNameStringByValue` 接口，以支持多语言环境
+- 关于窗口和新版本检测
+- 演示工程调整为可以以 `Server` / `Client` 方式启动
+- 演示工程增加 `TPSGameInstance` 以演示GameInstance的Lua绑定
+
+### Changed
+- 原来需要在 `UnLua.Build.cs` 里手动修改的宏定义都可以通过项目设置来配置了
+- 默认启用热重载
+- `UnLuaEditor` 模块负责生成智能提示信息导出
+- `UnLuaTestSuite` 模块提取为独立的插件，省去拷贝插件到自己的工程时还需要手动删除
+- 调整Lua源码为 `.cpp` ，以使用C++环境来编译Lua模块
+- 调整 `UFunction` 的覆写机制，不再使用`EX_CallLua`字节码
+- 禁止从 `UE` 命名空间直接访问蓝图类型，需要使用 `UE.UClass.Load` 来加载
+- `UnLua::CreateState` 已经不符合语义，标记为 `DEPRECATED`
+
+### Fixed
+- 绑定状态图标没有刷新的问题
+- C++的类析构会在luaL_error后被跳过 [#386](https://github.com/Tencent/UnLua/issues/386)
+- 开启多窗口，一个有UI展示，一个没有UI展示 [#387](https://github.com/Tencent/UnLua/issues/387)
+- 源码版引擎 Test 版本 UStruct::SerializeExpr Crash [#374](https://github.com/Tencent/UnLua/issues/374)
+- 某个UObject如果不再被Lua引用，它在Lua添加的委托函数就会失效[#394](https://github.com/Tencent/UnLua/issues/394)
+- 接口列表从lua传到c++/蓝图层会丢失一半信息[#398](https://github.com/Tencent/UnLua/issues/398)
+- 不同实例的多播委托绑定相同实例函数，清理时崩溃 [#400](https://github.com/Tencent/UnLua/issues/400)
+- LUA覆写导致数组传参错误 [#401](https://github.com/Tencent/UnLua/issues/401)
+- LUA以Out形式传参给蓝图数组始终为空 [#404](https://github.com/Tencent/UnLua/issues/404)
+
+### Removed
+- 移除诸如 `GLuaCxt` / `GReflectionRegistry` / `GObjectReferencer` 的全局变量
+- 移除宏定义 `SUPPORT_COMMANDLET` 和 `ENABLE_AUTO_CLEAN_NNATCLASS`
+- 移除 `UnLuaFrameWork` 模块
+- 移除 `IntelliSenseBP` 模块
+- 移除 `IntelliSense` 模块
+
+### PS
+
+我们把内部使用的工具提取成了独立的组件，欢迎点击[链接](https://marketplace.visualstudio.com/items?itemName=operali.lua-booster)体验，也可以通过VSCode应用商店中直接搜索`Lua Booster`安装。
+
+## [2.1.4] - 2022-4-8
 
 ### Fixed
 
@@ -14,11 +249,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - 编辑器下PIE结束时可能Crash的问题 [#388](https://github.com/Tencent/UnLua/issues/388)
 - UE4.25之前的版本在cook时提示IntProperty initialized not properly
 
-### PS
-
-我们把内部使用的工具提取成了独立的组件，欢迎点击[链接](https://marketplace.visualstudio.com/items?itemName=operali.lua-booster)体验，也可以通过VSCode应用商店中直接搜索`Lua Booster`安装。
-
-## [2.1.3] - 2021-3-9
+## [2.1.3] - 2022-3-9
 
 ### Added
 
@@ -41,7 +272,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - 子类被销毁时，可能会令父类的Lua绑定失效 [#375](https://github.com/Tencent/UnLua/issues/375)
 - 4.27在不启用Async Loading Thread Enabled的情况下打包后加载地图会导致Crash的问题 [#365](https://github.com/Tencent/UnLua/issues/365)
 
-## [2.1.2] - 2021-1-17
+## [2.1.2] - 2022-1-17
 
 ### Added
 

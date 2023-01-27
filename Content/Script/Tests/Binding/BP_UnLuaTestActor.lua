@@ -1,6 +1,5 @@
-require "UnLua"
-
-local M = Class()
+---@type BP_UnLuaTestStubActor_C
+local M = UnLua.Class()
 
 function M:Initialize()
     self.InitializeCalled = true
@@ -20,6 +19,10 @@ end
 
 function M:ReceiveDestroyed()
     self.ReceiveDestroyedCalled = true
+end
+
+function M:Greeting(txt)
+    return self.Overridden.Greeting(self, txt) .. " Lua"
 end
 
 function M:RunTest()
@@ -55,7 +58,7 @@ function M:RunTest()
         test("FTransformProperty", UE.FTransform(UE.FQuat(0,0,0,1), UE.FVector(1,2,3)))
         test("ObjectReferenceProperty", self)
         test("ClassReferenceProperty", self:GetClass())
-        test("SoftObjectReferenceProperty", "SkySphere", function(v) return v:Get():GetName() end)
+        test("SoftObjectReferenceProperty", "SkySphere", function(v) return v:LoadSynchronous():GetName() end)
         test("SoftClassReferenceProperty", self:GetClass(), function(v) return v:Get() end)
         test("EnumProperty", UE.ECollisionChannel.Pawn)
     end)

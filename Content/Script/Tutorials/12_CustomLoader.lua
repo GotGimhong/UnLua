@@ -10,11 +10,9 @@
     Source\TPSProject\TutorialBlueprintFunctionLibrary.cpp
 ]]
 
-require "UnLua"
-
 local Screen = require "Tutorials.Screen"
 
-local M = Class()
+local M = UnLua.Class()
 
 local function print_intro()
     local msg =
@@ -36,6 +34,8 @@ function M:ReceiveBeginPlay()
     package.path = package.path .. ";./?/Index.lua"
     UE.UTutorialBlueprintFunctionLibrary.SetupCustomLoader(2)
     Screen.Print(string.format("FromCustomLoader2:%s", require("Tutorials")))
+
+    UE.UTutorialBlueprintFunctionLibrary.SetupCustomLoader(0)
 end
 
 return M

@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include "UnLuaBase.h"
-#include "LuaContext.h"
-
-#define ENABLE_PERSISTENT_PARAM_BUFFER 1            // option to allocate persistent buffer for UFunction's parameters
+#include "lua.hpp"
+#include "Registries/FunctionRegistry.h"
+#include "Containers/StaticBitArray.h"
 
 struct lua_State;
 struct FParameterCollection;
@@ -28,10 +27,8 @@ class FPropertyDesc;
  */
 class FFunctionDesc
 {
-    friend class FReflectionRegistry;
-
 public:
-    FFunctionDesc(UFunction *InFunction, FParameterCollection *InDefaultParams, int32 InFunctionRef = INDEX_NONE);
+    FFunctionDesc(UFunction *InFunction, FParameterCollection *InDefaultParams);
     ~FFunctionDesc();
 
     /**
@@ -39,7 +36,7 @@ public:
      *
      * @return - true if the function is valid, false otherwise
      */
-    FORCEINLINE bool IsValid() const { return Function && GLuaCxt->IsUObjectValid(Function); }
+    FORCEINLINE bool IsValid() const { return Function.IsValid(); }
 
     /**
      * Test if this function has return property
@@ -54,13 +51,6 @@ public:
      * @return - true if the function is a latent function, false otherwise
      */
     FORCEINLINE bool IsLatentFunction() const { return LatentPropertyIndex > INDEX_NONE; }
-
-    /**
-     * Get the number of properties (includes both in and out properties)
-     *
-     * @return - the number of properties
-     */
-    FORCEINLINE uint8 GetNumProperties() const { return Function->NumParms; }
 
     /**
      * Get the number of out properties
@@ -88,19 +78,14 @@ public:
      *
      * @return - the UFunction
      */
-    FORCEINLINE UFunction* GetFunction() const { return Function; }
+    FORCEINLINE UFunction* GetFunction() const { return Function.Get(); }
 
-    /**
-     * Call Lua function that overrides this UFunction
-     *
-     * @param Stack - script execution stack
-     * @param RetValueAddress - address of return value
-     * @param bRpcCall - whether this function is a RPC function
-     * @param bUnpackParams - whether to unpack parameters from the stack
-     * @return - true if the Lua function executes successfully, false otherwise
-     */
-    bool CallLua(UObject *Context, FFrame &Stack, void *RetValueAddress, bool bRpcCall, bool bUnpackParams);
-
+    FORCEINLINE const char* GetLuaFunctionName() const { return LuaFunctionName->Get(); }
+ 
+    void CallLua(lua_State* L, lua_Integer FunctionRef, lua_Integer SelfRef, FFrame& Stack, RESULT_DECL);
+ 
+    bool CallLua(lua_State* L, int32 LuaRef, void* Params, UObject* Self);
+ 
     /**
      * Call this UFunction
      *
@@ -130,28 +115,29 @@ public:
     void BroadcastMulticastDelegate(lua_State *L, int32 NumParams, int32 FirstParamIndex, FMulticastScriptDelegate *ScriptDelegate);
 
 private:
-    void* PreCall(lua_State *L, int32 NumParams, int32 FirstParamIndex, TArray<bool> &CleanupFlags, void *Userdata = nullptr);
-    int32 PostCall(lua_State *L, int32 NumParams, int32 FirstParamIndex, void *Params, const TArray<bool> &CleanupFlags);
+    typedef TStaticBitArray<64U> FFlagArray;
+    void* PreCall(lua_State* L, int32 NumParams, int32 FirstParamIndex, FFlagArray& CleanupFlags, void* Userdata = nullptr);
+    int32 PostCall(lua_State* L, int32 NumParams, int32 FirstParamIndex, void* Params, const FFlagArray& CleanupFlags);
 
     bool CallLuaInternal(lua_State *L, void *InParams, FOutParmRec *OutParams, void *RetValueAddress) const;
 
-    UFunction *Function;
+    TWeakObjectPtr<UFunction> Function;
     FString FuncName;
 #if ENABLE_PERSISTENT_PARAM_BUFFER
     void *Buffer;
 #endif
 #if !SUPPORTS_RPC_CALL
     FOutParmRec *OutParmRec;
+    uint8 NumCalls;                 // RECURSE_LIMIT is 120 or 250 which is less than 256, so use a byte...
 #endif
-    TArray<FPropertyDesc*> Properties;
+    TArray<TUniquePtr<FPropertyDesc>> Properties;
     TArray<int32> OutPropertyIndices;
     FParameterCollection *DefaultParams;
     int32 ReturnPropertyIndex;
     int32 LatentPropertyIndex;
-    int32 FunctionRef;
     uint8 NumRefProperties;
-    uint8 NumCalls;                 // RECURSE_LIMIT is 120 or 250 which is less than 256, so use a byte...
     uint8 bStaticFunc : 1;
     uint8 bInterfaceFunc : 1;
-    uint8 bHasDelegateParams : 1;
+    int32 ParmsSize;
+    TUniquePtr<FTCHARToUTF8> LuaFunctionName;
 };

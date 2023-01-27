@@ -12,35 +12,26 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
 // See the License for the specific language governing permissions and limitations under the License.
 
+#include "LowLevel.h"
 #include "UnLuaEx.h"
-#include "UnLuaManager.h"
-#include "LuaContext.h"
 #include "LuaCore.h"
-#include "DelegateHelper.h"
-#include "UEObjectReferencer.h"
-#include "ReflectionUtils/ReflectionRegistry.h"
 
 /**
  * Load an object. for example: UObject.Load("/Game/Core/Blueprints/AI/BehaviorTree_Enemy.BehaviorTree_Enemy")
  * @see LoadObject(...)
  */
-int32 UObject_Load(lua_State *L)
+int32 UObject_Load(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    const char *ObjectName = lua_tostring(L, 1);
+    const char* ObjectName = lua_tostring(L, 1);
     if (!ObjectName)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid class name!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid class name");
 
-    FString ObjectPath(ObjectName);
+    FString ObjectPath = UTF8_TO_TCHAR(ObjectName);
+
     int32 Index = INDEX_NONE;
     ObjectPath.FindChar(TCHAR('.'), Index);
     if (Index == INDEX_NONE)
@@ -54,14 +45,14 @@ int32 UObject_Load(lua_State *L)
         }
     }
 
-    UObject *Object = LoadObject<UObject>(nullptr, *ObjectPath);
+    UObject* Object = LoadObject<UObject>(nullptr, *ObjectPath);
     if (Object)
     {
-        UEnum *Enum = Cast<UEnum>(Object);
+        UEnum* Enum = Cast<UEnum>(Object);
         if (Enum)
         {
-            RegisterEnum(L, Enum);
-            int32 Type = luaL_getmetatable(L, TCHAR_TO_UTF8(*Enum->GetName()));
+            UnLua::FLuaEnv::FindEnvChecked(L).GetEnumRegistry()->Register(Enum);
+            int32 Type = luaL_getmetatable(L, TCHAR_TO_UTF8(*UnLua::LowLevel::GetMetatableName(Enum)));
             check(Type == LUA_TTABLE);
         }
         else
@@ -71,7 +62,6 @@ int32 UObject_Load(lua_State *L)
     }
     else
     {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Failed to load object %s!"), ANSI_TO_TCHAR(__FUNCTION__), ANSI_TO_TCHAR(ObjectName));
         lua_pushnil(L);
     }
 
@@ -81,17 +71,14 @@ int32 UObject_Load(lua_State *L)
 /**
  * Test validity of an object
  */
-static int32 UObject_IsValid(lua_State *L)
+static int32 UObject_IsValid(lua_State* L)
 {
     const int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Error, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
-    
+        return luaL_error(L, "invalid parameters");
+
     UObject* Object = UnLua::GetUObject(L, 1);
-    const bool bValid = GLuaCxt->IsUObjectValid(Object) && IsValid(Object);
+    const bool bValid = UnLua::IsUObjectValid(Object) && IsValid(Object) && !Object->IsUnreachable();
     lua_pushboolean(L, bValid);
     return 1;
 }
@@ -99,21 +86,15 @@ static int32 UObject_IsValid(lua_State *L)
 /**
  * Get the name of an object (with no path information)
  */
-static int32 UObject_GetName(lua_State *L)
+static int32 UObject_GetName(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    UObject *Object = UnLua::GetUObject(L, 1);
+    UObject* Object = UnLua::GetUObject(L, 1);
     if (!Object)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid object");
 
     FString Name = Object->GetName();
     lua_pushstring(L, TCHAR_TO_UTF8(*Name));
@@ -123,23 +104,17 @@ static int32 UObject_GetName(lua_State *L)
 /**
  * Get the UObject this object resides in
  */
-static int32 UObject_GetOuter(lua_State *L)
+static int32 UObject_GetOuter(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    UObject *Object = UnLua::GetUObject(L, 1);
+    UObject* Object = UnLua::GetUObject(L, 1);
     if (!Object)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid object");
 
-    UObject *Outer = Object->GetOuter();
+    UObject* Outer = Object->GetOuter();
     UnLua::PushUObject(L, Outer);
     return 1;
 }
@@ -147,18 +122,16 @@ static int32 UObject_GetOuter(lua_State *L)
 /**
  * Get the UClass that defines the fields of this object
  */
-static int32 UObject_GetClass(lua_State *L)
+static int32 UObject_GetClass(lua_State* L)
 {
-    UClass *Class = nullptr;
+    UClass* Class;
     int32 NumParams = lua_gettop(L);
     if (NumParams > 0)
     {
-        UObject *Object = UnLua::GetUObject(L, 1);
+        UObject* Object = UnLua::GetUObject(L, 1);
         if (!Object)
-        {
-            UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-            return 0;
-        }
+            return luaL_error(L, "invalid object");
+
         Class = Object->GetClass();
     }
     else
@@ -172,98 +145,81 @@ static int32 UObject_GetClass(lua_State *L)
 /**
  * Get the UWorld this object is contained within
  */
-static int32 UObject_GetWorld(lua_State *L)
+static int32 UObject_GetWorld(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    UObject *Object = UnLua::GetUObject(L, 1);
+    UObject* Object = UnLua::GetUObject(L, 1);
     if (!Object)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid object");
 
-    class UWorld *World = Object->GetWorld();
-    UnLua::PushUObject(L, (UObject*)World, false);        // GWorld will be added to Root, so we don't collect it...
+    UWorld* World = Object->GetWorld();
+    UnLua::PushUObject(L, World);
     return 1;
 }
 
 /**
  * Test whether this object is of the specified type
  */
-static int32 UObject_IsA(lua_State *L)
+static int32 UObject_IsA(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 2)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    UObject *Object = UnLua::GetUObject(L, 1);
-    if (!GLuaCxt->IsUObjectValid(Object))
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+    UObject* Object = UnLua::GetUObject(L, 1);
+    if (!UnLua::IsUObjectValid(Object))
+        return luaL_error(L, "invalid object");
 
     UObject* ClassObject = UnLua::GetUObject(L, 2);
-    if (!GLuaCxt->IsUObjectValid(ClassObject))
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid object!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+    if (!UnLua::IsUObjectValid(ClassObject))
+        return luaL_error(L, "invalid class");
 
-    UClass *Class = Cast<UClass>(ClassObject);
+    UClass* Class = Cast<UClass>(ClassObject);
     if (!Class)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid class!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid class");
 
     bool bValid = Object->IsA(Class);
     lua_pushboolean(L, bValid);
     return 1;
 }
 
-static int32 UObject_Release(lua_State *L)
+static int32 UObject_Release(lua_State* L)
 {
-    int32 NumParams = lua_gettop(L);
-    if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
-
-    if (LUA_TTABLE == lua_type(L, -1))
-    {
-        UObject* Object = UnLua::GetUObject(L, -1);
-        if (Object)
-            GLuaCxt->GetManager()->ReleaseAttachedObjectLuaRef(Object);
-    }
-
     return 0;
 }
 
 /**
  * Test whether two objects are identical
  */
-int32 UObject_Identical(lua_State *L)
+int32 UObject_Identical(lua_State* L)
 {
-    int32 NumParams = lua_gettop(L);
+    const int NumParams = lua_gettop(L);
     if (NumParams != 2)
+        return luaL_error(L, "invalid parameters");
+
+    if (lua_rawequal(L, 1, 2))
     {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
+        lua_pushboolean(L, true);
+        return 1;
     }
 
-    UObject *A = UnLua::GetUObject(L, 1);
-    UObject *B = UnLua::GetUObject(L, 2);
+    const auto A = UnLua::GetUObject(L, 1);
+    if (!A)
+    {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    const auto B = UnLua::GetUObject(L, 2);
+    if (!B)
+    {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
     lua_pushboolean(L, A == B);
     return 1;
 }
@@ -272,70 +228,29 @@ int32 UObject_Identical(lua_State *L)
 /**
  * GC function
  */
-int32 UObject_Delete(lua_State *L)
-{   
+int32 UObject_Delete(lua_State* L)
+{
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters");
 
-    UObject *Object = nullptr;
     bool bTwoLvlPtr = false;
     bool bClassMetatable = false;
-    void *Userdata = GetUserdata(L, 1, &bTwoLvlPtr, &bClassMetatable);
+    void* Userdata = GetUserdata(L, 1, &bTwoLvlPtr, &bClassMetatable);
     if (!Userdata)
-    {
         return 0;
-    }
 
     if (bClassMetatable)
-    {
-        FClassDesc* ClassDesc = (FClassDesc*)Userdata;
+        return 0;
 
-        lua_pushstring(L, "__name");
-        lua_rawget(L, 1);
-        FString MetaTableName = UTF8_TO_TCHAR(lua_tostring(L, -1));
-        luaL_getmetatable(L, lua_tostring(L, -1));
-        int Type = lua_type(L, -1);
-        if (Type == LUA_TTABLE)
-        {
-            // https://github.com/Tencent/UnLua/issues/367
-            FClassDesc* CurrentClassDesc = (FClassDesc*)GetUserdata(L, -1);
-            lua_pop(L, 2);
-            if (CurrentClassDesc == ClassDesc)
-                return 0;
-        }
-        else
-        {
-            lua_pop(L, 2);
-        }
+    if (!bTwoLvlPtr)
+        return 0;
 
-        if (GReflectionRegistry.IsDescValid(ClassDesc, DESC_CLASS)
-            && ClassDesc->GetName().Equals(MetaTableName))
-        {
-            // remove class ref 
-            if ((ClassDesc->IsValid())
-                &&(!ClassDesc->IsNative()))
-            {
-                GObjectReferencer.RemoveObjectRef(ClassDesc->AsStruct());
-            }
-            
-            // class,ignore ref count
-            GReflectionRegistry.UnRegisterClass(ClassDesc);
-        }
-    }
-    else
-    {
-        Object = bTwoLvlPtr ? (UObject*)(*((void**)Userdata)) : (UObject*)Userdata;
-        if (Object)
-        {
-            GReflectionRegistry.AddToGCSet(Object);
-            DeleteUObjectRefs(L,Object);
-        }
-    }
-       
+    UObject* Object = (UObject*)*(void**)Userdata;
+    if (UnLua::LowLevel::IsReleasedPtr(Object))
+        return 0;
+
+    UnLua::FLuaEnv::FindEnvChecked(L).GetObjectRegistry()->NotifyUObjectLuaGC(Object);
     return 0;
 }
 
@@ -344,18 +259,18 @@ int32 UObject_Delete(lua_State *L)
  */
 static const luaL_Reg UObjectLib[] =
 {
-    { "Load", UObject_Load },
-    { "IsValid", UObject_IsValid },
-    { "GetName", UObject_GetName },
-    { "GetOuter", UObject_GetOuter },
-    { "GetClass", UObject_GetClass },
-    { "GetWorld", UObject_GetWorld },
-    { "IsA", UObject_IsA },
-    { "Release", UObject_Release },
-    { "Destroy", UObject_Release },
-    { "__eq", UObject_Identical },
-    { "__gc", UObject_Delete },
-    { nullptr, nullptr }
+    {"Load", UObject_Load},
+    {"IsValid", UObject_IsValid},
+    {"GetName", UObject_GetName},
+    {"GetOuter", UObject_GetOuter},
+    {"GetClass", UObject_GetClass},
+    {"GetWorld", UObject_GetWorld},
+    {"IsA", UObject_IsA},
+    {"Release", UObject_Release},
+    {"Destroy", UObject_Release},
+    {"__eq", UObject_Identical},
+    {"__gc", UObject_Delete},
+    {nullptr, nullptr}
 };
 
 
@@ -365,21 +280,19 @@ static const luaL_Reg UObjectLib[] =
 BEGIN_EXPORT_REFLECTED_CLASS(UObject)
     ADD_LIB(UObjectLib)
 END_EXPORT_CLASS()
+
 IMPLEMENT_EXPORTED_CLASS(UObject)
 
 /**
  * Export FSoftObjectPtr
  */
-static int32 FSoftObjectPtr_ToString(lua_State *L)
+static int32 FSoftObjectPtr_ToString(lua_State* L)
 {
     int32 NumParams = lua_gettop(L);
     if (NumParams != 1)
-    {
-        UE_LOG(LogUnLua, Log, TEXT("%s: Invalid parameters for __tostring!"), ANSI_TO_TCHAR(__FUNCTION__));
-        return 0;
-    }
+        return luaL_error(L, "invalid parameters for __tostring");
 
-    FSoftObjectPtr *A = (FSoftObjectPtr*)GetCppInstanceFast(L, 1);
+    FSoftObjectPtr* A = (FSoftObjectPtr*)GetCppInstanceFast(L, 1);
     if (!A)
     {
         int32 Type = luaL_getmetafield(L, 1, "__name");
@@ -397,19 +310,23 @@ static int32 FSoftObjectPtr_ToString(lua_State *L)
 
 static const luaL_Reg FSoftObjectPtrLib[] =
 {
-    { "__tostring", FSoftObjectPtr_ToString },
-    { nullptr, nullptr }
+    {"__tostring", FSoftObjectPtr_ToString},
+    {nullptr, nullptr}
 };
 
 BEGIN_EXPORT_CLASS(FSoftObjectPtr, const UObject*)
     ADD_CONST_FUNCTION_EX("IsValid", bool, IsValid)
+    ADD_CONST_FUNCTION_EX("IsNull", bool, IsNull)
+    ADD_CONST_FUNCTION_EX("IsPending", bool, IsPending)
     ADD_FUNCTION_EX("Reset", void, Reset)
     ADD_FUNCTION_EX("Set", void, operator=, const UObject*)
     ADD_FUNCTION_EX("GetAssetName", FString, GetAssetName)
     ADD_FUNCTION_EX("GetLongPackageName", FString, GetLongPackageName)
     ADD_CONST_FUNCTION_EX("Get", UObject*, Get)
+    ADD_CONST_FUNCTION_EX("LoadSynchronous", UObject*, LoadSynchronous)
     ADD_LIB(FSoftObjectPtrLib)
 END_EXPORT_CLASS()
+
 IMPLEMENT_EXPORTED_CLASS(FSoftObjectPtr)
 
 /**
@@ -421,6 +338,7 @@ BEGIN_EXPORT_CLASS(FLazyObjectPtr, const UObject*)
     ADD_FUNCTION_EX("Set", void, operator=, const UObject*)
     ADD_CONST_FUNCTION_EX("Get", UObject*, Get)
 END_EXPORT_CLASS()
+
 IMPLEMENT_EXPORTED_CLASS(FLazyObjectPtr)
 
 /**
@@ -432,4 +350,5 @@ BEGIN_EXPORT_CLASS(FWeakObjectPtr, const UObject*)
     ADD_CONST_FUNCTION_EX("Get", UObject*, Get)
     ADD_CONST_FUNCTION_EX("IsValid", bool, IsValid)
 END_EXPORT_CLASS()
+
 IMPLEMENT_EXPORTED_CLASS(FWeakObjectPtr)
