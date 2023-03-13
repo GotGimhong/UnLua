@@ -12,13 +12,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
 // See the License for the specific language governing permissions and limitations under the License.
 
+
+#include "Issue583Test.h"
+#include "LowLevel.h"
+#include "UnLuaSettings.h"
 #include "UnLuaTestCommon.h"
+#include "UnLuaTestHelpers.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
-#if UNLUA_LEGACY_ARGS_PASSING
 
-struct FUnLuaTest_Issue362 : FUnLuaTestBase
+struct FUnLuaTest_Issue583 : FUnLuaTestBase
 {
     virtual bool InstantTest() override
     {
@@ -30,24 +34,20 @@ struct FUnLuaTest_Issue362 : FUnLuaTestBase
         FUnLuaTestBase::SetUp();
 
         const auto Chunk = R"(
-        local Stub = NewObject(UE.UUnLuaTestStub)
-        Stub.Issue362Delegate:Bind(Stub, function(_, InArray)
-            InArray:Add(1)
-        end)
-        local Array = UE.TArray(0)
-        Stub.Issue362Delegate:Execute(Array)
-        return Array:Length()
+            local DataTable = UE.UObject.Load('/UnLuaTestSuite/Tests/Regression/Issue583/DataTable_Issue583.DataTable_Issue583')
+            local Row = UE.FIssue583Row()
+            local Result = UE.UDataTableFunctionLibrary.GetDataTableRowFromName(DataTable, 'Row_1', Row)
+            local Records = Row.Records:Values()
+            for i=1, Records:Length() do
+                local Record = Records:Get(i)
+                print(Record.Description)
+            end
         )";
         UnLua::RunChunk(L, Chunk);
-
-        const auto Actual = (int)lua_tonumber(L, -1);
-        RUNNER_TEST_EQUAL(Actual, 1);
-
         return true;
     }
 };
 
-IMPLEMENT_UNLUA_INSTANT_TEST(FUnLuaTest_Issue362, TEXT("UnLua.Regression.Issue362 TArray引用做委托参数在lua中修改不生效"))
+IMPLEMENT_UNLUA_INSTANT_TEST(FUnLuaTest_Issue583, TEXT("UnLua.Regression.Issue583 在Lua中遍历TMap字段的Values接口返回值时引起的崩溃"))
 
-#endif
 #endif

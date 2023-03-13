@@ -12,24 +12,28 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
 // See the License for the specific language governing permissions and limitations under the License.
 
-#include "LuaRapidjsonModule.h"
-#include "LuaEnv.h"
+#pragma once
 
-extern "C" int luaopen_rapidjson(lua_State* L);
+#include "Engine/DataTable.h"
+#include "Issue583Test.generated.h"
 
-void FLuaRapidjsonModule::StartupModule()
+USTRUCT(BlueprintType)
+struct FIssue583Record
 {
-    UnLua::FLuaEnv::OnCreated.AddStatic(&FLuaRapidjsonModule::OnLuaEnvCreated);
-}
+    GENERATED_BODY()
 
-void FLuaRapidjsonModule::ShutdownModule()
+    UPROPERTY(EditAnywhere)
+    FText Description;
+
+    UPROPERTY(EditAnywhere)
+    int32 Flag = 200;
+};
+
+USTRUCT(BlueprintType)
+struct FIssue583Row : public FTableRowBase
 {
-    UnLua::FLuaEnv::OnCreated.RemoveAll(this);
-}
+    GENERATED_BODY()
 
-void FLuaRapidjsonModule::OnLuaEnvCreated(UnLua::FLuaEnv& Env)
-{
-    Env.AddBuiltInLoader(TEXT("rapidjson"), luaopen_rapidjson);
-}
-
-IMPLEMENT_MODULE(FLuaRapidjsonModule, LuaRapidjson)
+    UPROPERTY(EditAnywhere)
+    TMap<FString, FIssue583Record> Records;
+};
